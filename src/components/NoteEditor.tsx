@@ -5,17 +5,32 @@ import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Share2, FilePlus2 } from "lucide-react";
+import { Share2, FilePlus2, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function NoteEditor({ noteId }: { noteId: string }) {
   const [text, setText] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+  const [url, setUrl] = useState("");
   const { toast } = useToast();
   
   const updateTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setUrl(window.location.href);
+  }, []);
 
   useEffect(() => {
     if (!noteId) return;
@@ -65,8 +80,8 @@ export default function NoteEditor({ noteId }: { noteId: string }) {
     }, 500);
   };
   
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href).then(() => {
+  const handleCopy = () => {
+    navigator.clipboard.writeText(url).then(() => {
         toast({
             title: "Link Copied!",
             description: "You can now share this note with others.",
@@ -88,10 +103,39 @@ export default function NoteEditor({ noteId }: { noteId: string }) {
             <span>SyncNote Live</span>
         </Link>
         <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleShare}>
-                <Share2 className="w-4 h-4 mr-2" />
-                Share
-            </Button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Share
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Share link</DialogTitle>
+                  <DialogDescription>
+                    Anyone with this link can view and edit this note.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex items-center space-x-2">
+                  <div className="grid flex-1 gap-2">
+                    <Label htmlFor="link" className="sr-only">
+                      Link
+                    </Label>
+                    <Input
+                      id="link"
+                      defaultValue={url}
+                      readOnly
+                    />
+                  </div>
+                  <Button size="sm" className="px-3" onClick={handleCopy}>
+                    <span className="sr-only">Copy</span>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             <Button asChild variant="default" size="sm">
                 <Link href="/">
                     <FilePlus2 className="w-4 h-4 mr-2" />
