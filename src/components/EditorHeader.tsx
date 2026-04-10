@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Share2, FilePlus2, Copy, Check, TextSelection } from "lucide-react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Dialog,
   DialogContent,
@@ -60,10 +61,16 @@ export default function EditorHeader({
           href="/"
           className="flex items-center gap-2 text-sm font-semibold text-zinc-200 hover:text-white transition-colors"
         >
-          <div className="flex items-center justify-center w-6 h-6 rounded bg-gradient-to-br from-teal-400 to-cyan-500">
-            <FilePlus2 className="w-3.5 h-3.5 text-white" />
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg overflow-hidden border border-zinc-700/50 shadow-inner">
+            <Image 
+              src="/icon.png" 
+              alt="SyncNote Logo" 
+              width={28} 
+              height={28} 
+              className="object-contain"
+            />
           </div>
-          <span className="hidden sm:inline font-mono tracking-tight">
+          <span className="hidden sm:inline font-mono tracking-tight text-teal-400">
             SyncNote
           </span>
         </Link>
