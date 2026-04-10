@@ -6,6 +6,7 @@ import { MonacoBinding } from "y-monaco";
 import { useCollaboration } from "@/hooks/use-collaboration";
 import { DEFAULT_LANGUAGE, Language, getLanguageById } from "@/lib/languages";
 import EditorHeader from "./EditorHeader";
+import MobileActionBar from "./MobileActionBar";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -18,6 +19,8 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
   const [isEditorReady, setIsEditorReady] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [actionBarVisible, setActionBarVisible] = useState(false);
+  const [actionBarPosition, setActionBarPosition] = useState<{ top: number; left: number } | null>(null);
   const editorRef = useRef<any>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const decorationsRef = useRef<any[]>([]);
@@ -189,8 +192,34 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
       });
     });
 
-    return () => disposable.dispose();
-  }, [collab, isEditorReady]);
+    const selectionDisposable = editor.onDidChangeCursorSelection((e: any) => {
+      if (!isMobile) return;
+
+      const selection = e.selection;
+      const isNotEmpty = !selection.isEmpty();
+
+      if (isNotEmpty) {
+        // Calculate position (slightly above the selection)
+        const coords = editor.getScrolledVisiblePosition(selection.getStartPosition());
+        if (coords) {
+          const editorElement = editor.getDomNode();
+          const rect = editorElement.getBoundingClientRect();
+          setActionBarPosition({
+            top: rect.top + coords.top,
+            left: rect.left + coords.left,
+          });
+          setActionBarVisible(true);
+        }
+      } else {
+        setActionBarVisible(false);
+      }
+    });
+
+    return () => {
+      disposable.dispose();
+      selectionDisposable.dispose();
+    };
+  }, [collab, isEditorReady, isMobile]);
 
   const handleLanguageChange = useCallback((newLang: Language) => {
     setLanguage(newLang);
@@ -217,9 +246,73 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
       if (model) {
         editor.setSelection(model.getFullModelRange());
         editor.focus();
+        
+        // On mobile, keep the bar visible after select all
+        if (isMobile) {
+          const coords = editor.getScrolledVisiblePosition(model.getFullModelRange().getStartPosition());
+          const rect = editor.getDomNode().getBoundingClientRect();
+          setActionBarPosition({ top: rect.top + coords.top, left: rect.left + coords.left });
+          setActionBarVisible(true);
+        }
       }
     }
-  }, []);
+  }, [isMobile]);
+
+  const handleCut = async () => {
+    const editor = editorRef.current;
+    if (editor) {
+      const text = editor.getModel().getValueInRange(editor.getSelection());
+      await navigator.clipboard.writeText(text);
+      editor.executeEdits("mobile-cut", [{
+        range: editor.getSelection(),
+        text: "",
+        forceMoveMarkers: true
+      }]);
+      setActionBarVisible(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    const editor = editorRef.current;
+    if (editor) {
+      const text = editor.getModel().getValueInRange(editor.getSelection());
+      await navigator.clipboard.writeText(text);
+      setActionBarVisible(false);
+    }
+  };
+
+  const handlePaste = async () => {
+    const editor = editorRef.current;
+    if (editor) {
+      try {
+        const text = await navigator.clipboard.readText();
+        editor.executeEdits("mobile-paste", [{
+          range: editor.getSelection(),
+          text: text,
+          forceMoveMarkers: true
+        }]);
+        setActionBarVisible(false);
+      } catch (err) {
+        alert("Please allow clipboard access to paste.");
+      }
+    }
+  };
+
+  const handleShare = async () => {
+    const editor = editorRef.current;
+    if (editor) {
+      const text = editor.getModel().getValueInRange(editor.getSelection()) || editor.getValue();
+      if (navigator.share) {
+        navigator.share({
+          title: "SyncNote Snippet",
+          text: text,
+          url: window.location.href
+        }).catch(() => {});
+      } else {
+        alert("Sharing not supported on this browser.");
+      }
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen bg-[#0D1117] text-zinc-200">
@@ -231,6 +324,16 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
         connectedUsers={connectedUsers}
         currentUserName={collab?.userName || ""}
         isConnected={isConnected}
+        onSelectAll={handleSelectAll}
+      />
+
+      <MobileActionBar
+        isVisible={actionBarVisible}
+        position={actionBarPosition}
+        onCut={handleCut}
+        onCopy={handleCopy}
+        onPaste={handlePaste}
+        onShare={handleShare}
         onSelectAll={handleSelectAll}
       />
 
@@ -282,6 +385,7 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
             wordWrap: "off",
             tabSize: 2,
             automaticLayout: true,
+            contextmenu: !isMobile,
             scrollbar: {
               verticalScrollbarSize: 8,
               horizontalScrollbarSize: 8,
