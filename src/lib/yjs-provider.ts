@@ -55,15 +55,7 @@ export function createCollaboration(noteId: string): CollaborationState {
   // Local persistence
   const indexeddbProvider = new IndexeddbPersistence(`syncnote-${noteId}`, ydoc);
 
-  // Awareness (Cursors) - Fallback to simple local state for now
-  // In a full implementation, awareness updates would also sync to Firestore
-  const awareness = {
-    states: new Map(),
-    on: () => {},
-    off: () => {},
-    getStates: () => new Map(),
-    setLocalStateField: () => {},
-  };
+
 
   const userName = getRandomName();
   const userColor = getRandomColor();
