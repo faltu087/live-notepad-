@@ -67,10 +67,83 @@ export function createCollaboration(noteId: string): CollaborationState {
 
   const userName = getRandomName();
   const userColor = getRandomColor();
+  const clientId = ydoc.clientID.toString();
 
   // Firestore Real-time Sync Logic
   const noteRef = doc(db, "notes", noteId);
   const updatesRef = collection(db, "notes", noteId, "updates");
+  const presenceRef = collection(db, "notes", noteId, "presence");
+
+  // Presence state management
+  const presenceStates = new Map<string, any>();
+  const presenceListeners: Array<(states: Map<string, any>) => void> = [];
+
+  const notifyPresenceListeners = () => {
+    presenceListeners.forEach(listener => listener(presenceStates));
+  };
+
+  // Listen to remote presence updates
+  const unsubscribePresence = onSnapshot(presenceRef, (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === "added" || change.type === "modified") {
+        const data = change.doc.data();
+        if (change.doc.id !== clientId) {
+          // Check if presence is older than 30 seconds (consider offline)
+          if (Date.now() - data.lastActive > 30000) {
+            presenceStates.delete(change.doc.id);
+          } else {
+            presenceStates.set(change.doc.id, data);
+          }
+        }
+      } else if (change.type === "removed") {
+        presenceStates.delete(change.doc.id);
+      }
+    });
+    notifyPresenceListeners();
+  });
+
+  // Export a custom awareness object
+  let presenceUpdateTimeout: NodeJS.Timeout | null = null;
+  const awareness = {
+    states: presenceStates,
+    on: (event: string, callback: any) => {
+      if (event === "change") presenceListeners.push(callback);
+    },
+    off: (event: string, callback: any) => {
+      if (event === "change") {
+        const index = presenceListeners.indexOf(callback);
+        if (index > -1) presenceListeners.splice(index, 1);
+      }
+    },
+    getStates: () => presenceStates,
+    setLocalStateField: (field: string, value: any) => {
+      // Throttle presence updates to Firestore (max 1 update per 300ms)
+      if (field === "cursor" && presenceUpdateTimeout) return;
+
+      const myPresenceRef = doc(db, "notes", noteId, "presence", clientId);
+      
+      const presenceData = {
+        name: userName,
+        color: userColor,
+        [field]: value,
+        lastActive: Date.now()
+      };
+
+      if (field === "cursor") {
+        presenceUpdateTimeout = setTimeout(() => {
+          setDoc(myPresenceRef, presenceData, { merge: true }).catch(console.error);
+          presenceUpdateTimeout = null;
+        }, 300);
+      } else {
+        setDoc(myPresenceRef, presenceData, { merge: true }).catch(console.error);
+      }
+    },
+    clientID: ydoc.clientID
+  };
+
+  // Initial presence
+  awareness.setLocalStateField("user", { name: userName, color: userColor });
+
 
   // 1. Initial Load from Firestore (Main Document)
   const initialLoad = async () => {
@@ -89,7 +162,7 @@ export function createCollaboration(noteId: string): CollaborationState {
         if (change.type === "added") {
           const data = change.doc.data();
           // Don't apply our own updates (tagged with our clientId or origin)
-          if (data.origin !== ydoc.clientID.toString()) {
+          if (data.origin !== clientId) {
             try {
               Y.applyUpdate(ydoc, fromBase64(data.update), "firestore");
             } catch (e) {
@@ -107,7 +180,7 @@ export function createCollaboration(noteId: string): CollaborationState {
     if (origin !== "firestore" && origin !== "initial") {
       addDoc(updatesRef, {
         update: toBase64(update),
-        origin: ydoc.clientID.toString(),
+        origin: clientId,
         timestamp: serverTimestamp(),
       }).catch(err => console.error("Error sending update to Firestore", err));
     }
@@ -130,9 +203,6 @@ export function createCollaboration(noteId: string): CollaborationState {
           updatedAt: serverTimestamp(),
           textPreview: doc.getText("monaco").toString().substring(0, 200),
         }, { merge: true });
-
-        // Optional: Clean up old updates to keep DB small and fast
-        // (In a real app, you'd do this via a Cloud Function)
       } catch (err) {
         console.warn("Snapshot failed", err);
       }
@@ -141,7 +211,13 @@ export function createCollaboration(noteId: string): CollaborationState {
 
   const destroy = () => {
     if (snapshotTimeout) clearTimeout(snapshotTimeout);
+    if (presenceUpdateTimeout) clearTimeout(presenceUpdateTimeout);
+    
+    // Clean up local presence from Firestore
+    deleteDoc(doc(db, "notes", noteId, "presence", clientId)).catch(console.error);
+
     unsubscribeFirestore();
+    unsubscribePresence();
     ydoc.off("update", handleUpdate);
     indexeddbProvider.destroy();
     ydoc.destroy();
@@ -150,7 +226,7 @@ export function createCollaboration(noteId: string): CollaborationState {
   return {
     ydoc,
     yText,
-    awareness, // Note: Shared cursors need more logic for Firestore, keeping placeholder
+    awareness,
     userName,
     userColor,
     destroy,

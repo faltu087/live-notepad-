@@ -25,17 +25,40 @@ export function useCollaboration(noteId: string) {
     collabRef.current = collaboration;
     setCollab(collaboration);
     
+    // Track connected users via custom awareness object
+    const updateUsers = () => {
+      const states = collaboration.awareness.getStates();
+      const users: ConnectedUser[] = [];
+
+      // Add self
+      users.push({
+        clientId: collaboration.awareness.clientID as any,
+        name: collaboration.userName,
+        color: collaboration.userColor,
+      });
+
+      // Add remote users
+      states.forEach((state, clientId) => {
+        if (state.name) {
+          users.push({
+            clientId: clientId as any,
+            name: state.name,
+            color: state.color,
+          });
+        }
+      });
+
+      setConnectedUsers(users);
+    };
+
+    collaboration.awareness.on("change", updateUsers);
+    
     // In this Firestore-based sync, we consider it "connected" once initialized
     setIsConnected(true);
-
-    // Initial user state (just yourself for now, since we simplified awareness)
-    setConnectedUsers([{
-      clientId: 0,
-      name: collaboration.userName,
-      color: collaboration.userColor
-    }]);
+    updateUsers();
 
     return () => {
+      collaboration.awareness.off("change", updateUsers);
       collaboration.destroy();
       collabRef.current = null;
     };

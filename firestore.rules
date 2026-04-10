@@ -9,6 +9,11 @@ service cloud.firestore {
       match /updates/{updateId} {
         allow read, write: if true;
       }
+      
+      // Allow access to the presence sub-collection for cursors
+      match /presence/{userId} {
+        allow read, write: if true;
+      }
     }
   }
 }

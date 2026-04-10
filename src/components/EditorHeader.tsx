@@ -5,7 +5,7 @@ import { ConnectedUser } from "@/hooks/use-collaboration";
 import LanguageSelector from "./LanguageSelector";
 import UserPresence from "./UserPresence";
 import { Button } from "@/components/ui/button";
-import { Share2, FilePlus2, Copy, Check } from "lucide-react";
+import { Share2, FilePlus2, Copy, Check, TextSelection } from "lucide-react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
@@ -26,6 +26,7 @@ interface EditorHeaderProps {
   connectedUsers: ConnectedUser[];
   currentUserName: string;
   isConnected: boolean;
+  onSelectAll: () => void;
 }
 
 export default function EditorHeader({
@@ -35,6 +36,7 @@ export default function EditorHeader({
   connectedUsers,
   currentUserName,
   isConnected,
+  onSelectAll,
 }: EditorHeaderProps) {
   const [url, setUrl] = useState("");
   const [copied, setCopied] = useState(false);
@@ -98,12 +100,24 @@ export default function EditorHeader({
 
         <div className="w-px h-5 bg-zinc-700/60 mx-1 hidden sm:block" />
 
+        {/* Mobile "Select All" Button */}
+        <Button
+          onClick={onSelectAll}
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 text-zinc-400 hover:text-white hover:bg-zinc-800 sm:hidden"
+          title="Select All"
+        >
+          <TextSelection className="w-4 h-4" />
+          <span className="sr-only">Select All</span>
+        </Button>
+
         <Dialog>
           <DialogTrigger asChild>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 gap-1.5"
+              className="h-8 text-xs px-2 sm:px-3 text-zinc-400 hover:text-white hover:bg-zinc-800 gap-1.5"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Share</span>

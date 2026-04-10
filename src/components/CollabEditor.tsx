@@ -6,6 +6,8 @@ import { MonacoBinding } from "y-monaco";
 import { useCollaboration } from "@/hooks/use-collaboration";
 import { DEFAULT_LANGUAGE, Language, getLanguageById } from "@/lib/languages";
 import EditorHeader from "./EditorHeader";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 interface CollabEditorProps {
   noteId: string;
@@ -15,8 +17,29 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
   const { collab, connectedUsers, isConnected } = useCollaboration(noteId);
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
   const [isEditorReady, setIsEditorReady] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const editorRef = useRef<any>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
+  const decorationsRef = useRef<any[]>([]);
+
+  // Detect mobile
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // Fetch persisted language
+  useEffect(() => {
+    const fetchLanguage = async () => {
+      const docSnap = await getDoc(doc(db, "notes", noteId));
+      if (docSnap.exists() && docSnap.data().languageId) {
+        setLanguage(getLanguageById(docSnap.data().languageId));
+      }
+    };
+    fetchLanguage();
+  }, [noteId]);
 
   const handleEditorMount: OnMount = useCallback(
     (editor, monaco) => {
@@ -93,6 +116,82 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
     };
   }, [collab, isEditorReady]);
 
+  // Handle remote cursor decorations
+  useEffect(() => {
+    if (!collab || !editorRef.current || !isEditorReady) return;
+
+    const editor = editorRef.current;
+    
+    const updateDecorations = () => {
+      const states = collab.awareness.getStates();
+      const newDecorations: any[] = [];
+      const monaco = (window as any).monaco;
+
+      states.forEach((state, clientId) => {
+        if (clientId.toString() === collab.ydoc.clientID.toString()) return;
+        if (!state.cursor || !state.cursor.anchor) return;
+
+        // Custom style for the remote cursor
+        const color = state.color || "#4ECDC4";
+        const name = state.name || "User";
+
+        // Add CSS variable for color if needed, but for simplicity we rely on globals.css for now
+        // y-monaco already uses `yRemoteSelectionHead` which we styled.
+        // Doing it manually to match Yjs exactly:
+        newDecorations.push({
+          range: new monaco.Range(
+            state.cursor.anchor.lineNumber,
+            state.cursor.anchor.column,
+            state.cursor.anchor.lineNumber,
+            state.cursor.anchor.column
+          ),
+          options: {
+            className: "yRemoteSelection",
+            hoverMessage: { value: name },
+            beforeContentClassName: "yRemoteSelectionHead",
+          },
+        });
+        
+        // If there's a selection range
+        if (state.cursor.selection && state.cursor.selection.startLineNumber) {
+           newDecorations.push({
+             range: new monaco.Range(
+               state.cursor.selection.startLineNumber,
+               state.cursor.selection.startColumn,
+               state.cursor.selection.endLineNumber,
+               state.cursor.selection.endColumn
+             ),
+             options: {
+               className: "yRemoteSelection text-opacity-30",
+             }
+           });
+        }
+      });
+
+      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, newDecorations);
+    };
+
+    collab.awareness.on("change", updateDecorations);
+    return () => {
+      collab.awareness.off("change", updateDecorations);
+    };
+  }, [collab, isEditorReady]);
+
+  // Handle local cursor changes to broadcast to awareness
+  useEffect(() => {
+    if (!collab || !editorRef.current || !isEditorReady) return;
+    const editor = editorRef.current;
+
+    const disposable = editor.onDidChangeCursorPosition((e: any) => {
+      collab.awareness.setLocalStateField("cursor", {
+        anchor: e.position,
+        selection: editor.getSelection(),
+      });
+    });
+
+    return () => disposable.dispose();
+  }, [collab, isEditorReady]);
+
   const handleLanguageChange = useCallback((newLang: Language) => {
     setLanguage(newLang);
     if (editorRef.current) {
@@ -103,6 +202,21 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
         if (monaco) {
           monaco.editor.setModelLanguage(model, newLang.id);
         }
+      }
+      
+      // Persist to Firestore
+      setDoc(doc(db, "notes", noteId), { languageId: newLang.id }, { merge: true })
+        .catch(err => console.error("Could not save language", err));
+    }
+  }, [noteId]);
+
+  const handleSelectAll = useCallback(() => {
+    if (editorRef.current) {
+      const editor = editorRef.current;
+      const model = editor.getModel();
+      if (model) {
+        editor.setSelection(model.getFullModelRange());
+        editor.focus();
       }
     }
   }, []);
@@ -117,6 +231,7 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
         connectedUsers={connectedUsers}
         currentUserName={collab?.userName || ""}
         isConnected={isConnected}
+        onSelectAll={handleSelectAll}
       />
 
       {/* Editor */}
@@ -142,13 +257,13 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
           theme="vs-dark"
           onMount={handleEditorMount}
           options={{
-            fontSize: 14,
+            fontSize: isMobile ? 16 : 14,
             fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
             fontLigatures: true,
             lineHeight: 22,
             padding: { top: 16, bottom: 16 },
             minimap: {
-              enabled: true,
+              enabled: !isMobile,
               side: "right",
               size: "proportional",
               maxColumn: 80,
