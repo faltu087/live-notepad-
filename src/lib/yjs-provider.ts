@@ -1,8 +1,7 @@
 import * as Y from "yjs";
-import { WebrtcProvider } from "y-webrtc";
-import { IndexeddbPersistence } from "y-indexeddb";
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot, collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase";
+import { IndexeddbPersistence } from "y-indexeddb";
 
 // User colors for cursors
 const USER_COLORS = [
@@ -30,111 +29,130 @@ function getRandomName(): string {
 
 export interface CollaborationState {
   ydoc: Y.Doc;
-  provider: WebrtcProvider;
   yText: Y.Text;
-  awareness: WebrtcProvider["awareness"];
+  awareness: any;
   userName: string;
   userColor: string;
   destroy: () => void;
 }
 
+// Helper to convert Uint8Array to Base64
+const toBase64 = (arr: Uint8Array) => btoa(String.fromCharCode(...arr));
+// Helper to convert Base64 to Uint8Array
+const fromBase64 = (str: string) => {
+  const binaryString = atob(str);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+};
+
 export function createCollaboration(noteId: string): CollaborationState {
   const ydoc = new Y.Doc();
   const yText = ydoc.getText("monaco");
 
-  // WebRTC provider for peer-to-peer sync
-  const provider = new WebrtcProvider(`syncnote-${noteId}`, ydoc, {
-    signaling: [
-      "wss://signaling.yjs.dev",
-      "wss://y-webrtc-signaling-eu.herokuapp.com",
-      "wss://y-webrtc-signaling-us.herokuapp.com",
-    ],
-  });
-
-  // IndexedDB for local offline persistence
+  // Local persistence
   const indexeddbProvider = new IndexeddbPersistence(`syncnote-${noteId}`, ydoc);
 
-  // Set user awareness (name, color, cursor)
+  // Awareness (Cursors) - Fallback to simple local state for now
+  // In a full implementation, awareness updates would also sync to Firestore
+  const awareness = {
+    states: new Map(),
+    on: () => {},
+    off: () => {},
+    getStates: () => new Map(),
+    setLocalStateField: () => {},
+  };
+
   const userName = getRandomName();
   const userColor = getRandomColor();
 
-  provider.awareness.setLocalStateField("user", {
-    name: userName,
-    color: userColor,
-    colorLight: userColor + "40",
-  });
+  // Firestore Real-time Sync Logic
+  const noteRef = doc(db, "notes", noteId);
+  const updatesRef = collection(db, "notes", noteId, "updates");
 
-  // Firebase Firestore persistence - load initial state
-  loadFromFirestore(noteId, ydoc);
+  // 1. Initial Load from Firestore (Main Document)
+  const initialLoad = async () => {
+    const docSnap = await getDoc(noteRef);
+    if (docSnap.exists() && docSnap.data().yjsState) {
+      Y.applyUpdate(ydoc, fromBase64(docSnap.data().yjsState), "initial");
+    }
+  };
+  initialLoad();
 
-  // Save to Firestore periodically (debounced)
-  let saveTimeout: NodeJS.Timeout | null = null;
-  const handleUpdate = () => {
-    if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-      saveToFirestore(noteId, ydoc);
-    }, 2000);
+  // 2. Listen for incoming updates from other users
+  const unsubscribeFirestore = onSnapshot(
+    query(updatesRef, orderBy("timestamp", "asc")),
+    (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const data = change.doc.data();
+          // Don't apply our own updates (tagged with our clientId or origin)
+          if (data.origin !== ydoc.clientID.toString()) {
+            try {
+              Y.applyUpdate(ydoc, fromBase64(data.update), "firestore");
+            } catch (e) {
+              console.error("Failed to apply Firestore update", e);
+            }
+          }
+        }
+      });
+    }
+  );
+
+  // 3. Send local updates to Firestore
+  const handleUpdate = (update: Uint8Array, origin: any) => {
+    // Only send updates that didn't come from Firestore itself
+    if (origin !== "firestore" && origin !== "initial") {
+      addDoc(updatesRef, {
+        update: toBase64(update),
+        origin: ydoc.clientID.toString(),
+        timestamp: serverTimestamp(),
+      }).catch(err => console.error("Error sending update to Firestore", err));
+    }
+
+    // Debounce saving the full state to the main document (Snapshotting)
+    debouncedSnapshot(noteId, ydoc);
   };
 
   ydoc.on("update", handleUpdate);
 
+  // Snapshotting logic to keep the updates collection clean
+  let snapshotTimeout: NodeJS.Timeout | null = null;
+  const debouncedSnapshot = (id: string, doc: Y.Doc) => {
+    if (snapshotTimeout) clearTimeout(snapshotTimeout);
+    snapshotTimeout = setTimeout(async () => {
+      try {
+        const state = Y.encodeStateAsUpdate(doc);
+        await setDoc(noteRef, {
+          yjsState: toBase64(state),
+          updatedAt: serverTimestamp(),
+          textPreview: doc.getText("monaco").toString().substring(0, 200),
+        }, { merge: true });
+
+        // Optional: Clean up old updates to keep DB small and fast
+        // (In a real app, you'd do this via a Cloud Function)
+      } catch (err) {
+        console.warn("Snapshot failed", err);
+      }
+    }, 5000);
+  };
+
   const destroy = () => {
-    if (saveTimeout) clearTimeout(saveTimeout);
-    // Save before leaving
-    saveToFirestore(noteId, ydoc);
+    if (snapshotTimeout) clearTimeout(snapshotTimeout);
+    unsubscribeFirestore();
     ydoc.off("update", handleUpdate);
-    provider.destroy();
     indexeddbProvider.destroy();
     ydoc.destroy();
   };
 
   return {
     ydoc,
-    provider,
     yText,
-    awareness: provider.awareness,
+    awareness, // Note: Shared cursors need more logic for Firestore, keeping placeholder
     userName,
     userColor,
     destroy,
   };
-}
-
-async function saveToFirestore(noteId: string, ydoc: Y.Doc) {
-  try {
-    const state = Y.encodeStateAsUpdate(ydoc);
-    const base64State = btoa(
-      String.fromCharCode(...new Uint8Array(state))
-    );
-    const noteRef = doc(db, "notes", noteId);
-    await setDoc(
-      noteRef,
-      {
-        yjsState: base64State,
-        updatedAt: new Date().toISOString(),
-        textPreview: ydoc.getText("monaco").toString().substring(0, 200),
-      },
-      { merge: true }
-    );
-  } catch (error) {
-    console.warn("Failed to save to Firestore:", error);
-  }
-}
-
-async function loadFromFirestore(noteId: string, ydoc: Y.Doc) {
-  try {
-    const noteRef = doc(db, "notes", noteId);
-    const docSnap = await getDoc(noteRef);
-
-    if (docSnap.exists() && docSnap.data().yjsState) {
-      const base64State = docSnap.data().yjsState;
-      const binaryString = atob(base64State);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      Y.applyUpdate(ydoc, bytes);
-    }
-  } catch (error) {
-    console.warn("Failed to load from Firestore:", error);
-  }
 }

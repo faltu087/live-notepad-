@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   createCollaboration,
   CollaborationState,
@@ -24,37 +24,18 @@ export function useCollaboration(noteId: string) {
     const collaboration = createCollaboration(noteId);
     collabRef.current = collaboration;
     setCollab(collaboration);
+    
+    // In this Firestore-based sync, we consider it "connected" once initialized
+    setIsConnected(true);
 
-    // Track connected users via awareness
-    const updateUsers = () => {
-      const states = collaboration.awareness.getStates();
-      const users: ConnectedUser[] = [];
-
-      states.forEach((state, clientId) => {
-        if (state.user) {
-          users.push({
-            clientId,
-            name: state.user.name,
-            color: state.user.color,
-          });
-        }
-      });
-
-      setConnectedUsers(users);
-      setIsConnected(true);
-    };
-
-    collaboration.awareness.on("change", updateUsers);
-    collaboration.provider.on("synced", () => {
-      setIsConnected(true);
-      updateUsers();
-    });
-
-    // Initial update
-    updateUsers();
+    // Initial user state (just yourself for now, since we simplified awareness)
+    setConnectedUsers([{
+      clientId: 0,
+      name: collaboration.userName,
+      color: collaboration.userColor
+    }]);
 
     return () => {
-      collaboration.awareness.off("change", updateUsers);
       collaboration.destroy();
       collabRef.current = null;
     };

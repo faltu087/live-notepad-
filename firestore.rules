@@ -3,10 +3,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /notes/{noteId} {
-      // Allows anyone to read and write to the notes collection. 
-      // For a public collaboration tool like Rustpad, this is expected.
-      // In a production app, you might want to add rate limiting or actual auth.
       allow read, write: if true;
+      
+      // Allow access to the updates sub-collection for real-time deltas
+      match /updates/{updateId} {
+        allow read, write: if true;
+      }
     }
   }
 }
