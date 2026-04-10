@@ -3,7 +3,7 @@
 import React from "react";
 import { Scissors, Copy, Share2, Clipboard, Type } from "lucide-react";
 
-interface MobileActionBarProps {
+interface FloatingActionBarProps {
   onCut: () => void;
   onCopy: () => void;
   onPaste: () => void;
@@ -13,7 +13,7 @@ interface MobileActionBarProps {
   position: { top: number; left: number } | null;
 }
 
-export default function MobileActionBar({
+export default function FloatingActionBar({
   onCut,
   onCopy,
   onPaste,

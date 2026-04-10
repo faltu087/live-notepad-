@@ -6,7 +6,7 @@ import { MonacoBinding } from "y-monaco";
 import { useCollaboration } from "@/hooks/use-collaboration";
 import { DEFAULT_LANGUAGE, Language, getLanguageById } from "@/lib/languages";
 import EditorHeader from "./EditorHeader";
-import MobileActionBar from "./MobileActionBar";
+import FloatingActionBar from "./FloatingActionBar";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -193,8 +193,6 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
     });
 
     const selectionDisposable = editor.onDidChangeCursorSelection((e: any) => {
-      if (!isMobile) return;
-
       const selection = e.selection;
       const isNotEmpty = !selection.isEmpty();
 
@@ -327,7 +325,7 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
         onSelectAll={handleSelectAll}
       />
 
-      <MobileActionBar
+      <FloatingActionBar
         isVisible={actionBarVisible}
         position={actionBarPosition}
         onCut={handleCut}
@@ -385,7 +383,7 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
             wordWrap: "off",
             tabSize: 2,
             automaticLayout: true,
-            contextmenu: !isMobile,
+            contextmenu: false,
             scrollbar: {
               verticalScrollbarSize: 8,
               horizontalScrollbarSize: 8,
