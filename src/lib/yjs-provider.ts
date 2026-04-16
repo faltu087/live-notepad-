@@ -113,7 +113,7 @@ export function createCollaboration(noteId: string): CollaborationState {
       if (field === "cursor" && presenceUpdateTimeout) return;
 
       const myPresenceRef = doc(db, "notes", noteId, "presence", clientId);
-      
+
       const presenceData = {
         name: userName,
         color: userColor,
@@ -204,7 +204,7 @@ export function createCollaboration(noteId: string): CollaborationState {
   const destroy = () => {
     if (snapshotTimeout) clearTimeout(snapshotTimeout);
     if (presenceUpdateTimeout) clearTimeout(presenceUpdateTimeout);
-    
+
     // Clean up local presence from Firestore
     deleteDoc(doc(db, "notes", noteId, "presence", clientId)).catch(console.error);
 

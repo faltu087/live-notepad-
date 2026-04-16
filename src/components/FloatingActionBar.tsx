@@ -21,7 +21,7 @@ export default function FloatingActionBar({
   onSelectAll,
   isVisible,
   position,
-}: MobileActionBarProps) {
+}: FloatingActionBarProps) {
   if (!isVisible || !position) return null;
 
   return (

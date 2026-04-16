@@ -78,11 +78,10 @@ export default function LanguageSelector({
                   setIsOpen(false);
                   setSearch("");
                 }}
-                className={`w-full text-left px-3 py-2 text-sm transition-colors duration-100 flex items-center justify-between ${
-                  selectedLanguage.id === lang.id
+                className={`w-full text-left px-3 py-2 text-sm transition-colors duration-100 flex items-center justify-between ${selectedLanguage.id === lang.id
                     ? "bg-teal-500/20 text-teal-300"
                     : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                }`}
+                  }`}
               >
                 <span>{lang.name}</span>
                 {lang.extension && (

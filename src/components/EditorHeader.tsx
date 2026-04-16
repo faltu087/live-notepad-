@@ -57,32 +57,31 @@ export default function EditorHeader({
     <header className="flex items-center justify-between h-12 px-4 bg-zinc-900/95 border-b border-zinc-800/80 backdrop-blur-sm shrink-0">
       {/* Left: Logo */}
       <div className="flex items-center gap-3">
-        <Link
+        <a
           href="/"
           className="flex items-center gap-2 text-sm font-semibold text-zinc-200 hover:text-white transition-colors"
         >
           <div className="flex items-center justify-center w-7 h-7 rounded-lg overflow-hidden border border-zinc-700/50 shadow-inner">
-            <Image 
-              src="/icon.png" 
-              alt="SyncNote Logo" 
-              width={28} 
-              height={28} 
+            <Image
+              src="/icon.png"
+              alt="SyncNote Logo"
+              width={28}
+              height={28}
               className="object-contain"
             />
           </div>
           <span className="hidden sm:inline font-mono tracking-tight text-teal-400">
             SyncNote
           </span>
-        </Link>
+        </a>
 
         {/* Connection indicator */}
         <div className="flex items-center gap-1.5">
           <div
-            className={`w-1.5 h-1.5 rounded-full ${
-              isConnected
+            className={`w-1.5 h-1.5 rounded-full ${isConnected
                 ? "bg-emerald-400 shadow-sm shadow-emerald-400/50"
                 : "bg-yellow-400 animate-pulse"
-            }`}
+              }`}
           />
           <span className="text-[11px] text-zinc-500 hidden md:inline">
             {isConnected ? "Connected" : "Connecting..."}
@@ -165,14 +164,15 @@ export default function EditorHeader({
         </Dialog>
 
         <Button
-          asChild
+          onClick={() => {
+            const newId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 6);
+            window.location.href = `/notes/${newId}`; // Or useRouter, but window.location ensures fresh connection
+          }}
           size="sm"
           className="h-8 text-xs bg-teal-500/20 text-teal-300 hover:bg-teal-500/30 border border-teal-500/30 gap-1.5"
         >
-          <Link href="/">
-            <FilePlus2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">New</span>
-          </Link>
+          <FilePlus2 className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">New</span>
         </Button>
       </div>
     </header>

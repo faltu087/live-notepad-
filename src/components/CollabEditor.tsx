@@ -124,13 +124,13 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
     if (!collab || !editorRef.current || !isEditorReady) return;
 
     const editor = editorRef.current;
-    
+
     const updateDecorations = () => {
       const states = collab.awareness.getStates();
       const newDecorations: any[] = [];
       const monaco = (window as any).monaco;
 
-      states.forEach((state, clientId) => {
+      states.forEach((state: any, clientId: any) => {
         if (clientId.toString() === collab.ydoc.clientID.toString()) return;
         if (!state.cursor || !state.cursor.anchor) return;
 
@@ -154,20 +154,20 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
             beforeContentClassName: "yRemoteSelectionHead",
           },
         });
-        
+
         // If there's a selection range
         if (state.cursor.selection && state.cursor.selection.startLineNumber) {
-           newDecorations.push({
-             range: new monaco.Range(
-               state.cursor.selection.startLineNumber,
-               state.cursor.selection.startColumn,
-               state.cursor.selection.endLineNumber,
-               state.cursor.selection.endColumn
-             ),
-             options: {
-               className: "yRemoteSelection text-opacity-30",
-             }
-           });
+          newDecorations.push({
+            range: new monaco.Range(
+              state.cursor.selection.startLineNumber,
+              state.cursor.selection.startColumn,
+              state.cursor.selection.endLineNumber,
+              state.cursor.selection.endColumn
+            ),
+            options: {
+              className: "yRemoteSelection text-opacity-30",
+            }
+          });
         }
       });
 
@@ -230,7 +230,7 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
           monaco.editor.setModelLanguage(model, newLang.id);
         }
       }
-      
+
       // Persist to Firestore
       setDoc(doc(db, "notes", noteId), { languageId: newLang.id }, { merge: true })
         .catch(err => console.error("Could not save language", err));
@@ -244,7 +244,7 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
       if (model) {
         editor.setSelection(model.getFullModelRange());
         editor.focus();
-        
+
         // On mobile, keep the bar visible after select all
         if (isMobile) {
           const coords = editor.getScrolledVisiblePosition(model.getFullModelRange().getStartPosition());
@@ -305,7 +305,7 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
           title: "SyncNote Snippet",
           text: text,
           url: window.location.href
-        }).catch(() => {});
+        }).catch(() => { });
       } else {
         alert("Sharing not supported on this browser.");
       }
@@ -391,7 +391,6 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
             },
             overviewRulerBorder: false,
             hideCursorInOverviewRuler: true,
-            contextmenu: true,
             quickSuggestions: true,
             suggestOnTriggerCharacters: true,
             acceptSuggestionOnEnter: "on",
@@ -406,11 +405,10 @@ export default function CollabEditor({ noteId }: CollabEditorProps) {
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5">
             <div
-              className={`w-1.5 h-1.5 rounded-full ${
-                isConnected
+              className={`w-1.5 h-1.5 rounded-full ${isConnected
                   ? "bg-emerald-400"
                   : "bg-yellow-400 animate-pulse"
-              }`}
+                }`}
             />
             {isConnected ? "Synced" : "Syncing..."}
           </span>
